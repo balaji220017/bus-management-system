@@ -1,0 +1,32 @@
+# Backend (Express + Prisma) - Production Dockerfile
+FROM node:20-alpine AS base
+
+WORKDIR /app
+
+# Install dependencies
+COPY package.json package-lock.json* ./
+RUN npm ci --omit=dev
+
+# Copy Prisma schema and scripts
+COPY prisma ./prisma
+COPY scripts ./scripts
+
+# Use PostgreSQL schema and generate client
+RUN node scripts/use-postgres-schema.js && npx prisma generate
+
+# Copy backend source
+COPY server ./server
+COPY lib ./lib
+
+# Build backend (TypeScript -> JS) if needed; or run with tsx in prod
+# For production we run with node after building, so we need to compile
+# Since we're using tsx in dev, for Docker we'll use tsx at runtime to avoid build step
+RUN npm install tsx -g
+
+ENV NODE_ENV=production
+EXPOSE 5000
+
+# Use Prisma with PostgreSQL in production
+ENV DATABASE_URL="${DATABASE_URL}"
+
+CMD ["sh", "-c", "npx prisma db push --accept-data-loss 2>/dev/null || true && npx tsx server/index.ts"]
